@@ -1,0 +1,16 @@
+REEMPLAZAR ESTOS 3 ARCHIVOS EN TU PROYECTO:
+
+1. server/config.js
+2. server/index.js
+3. src/App.jsx
+
+NO reemplaces ni borres tu archivo .env.
+
+Despues de reemplazarlos:
+1. Guarda todo.
+2. Deten npm run dev con Ctrl+C.
+3. Ejecuta npm run dev nuevamente.
+4. Abre: http://localhost:3001/api/meta/config-status
+5. Luego prueba: http://localhost:3001/api/meta/charges?year=2026&month=8
+
+El endpoint config-status NO muestra el token. Solo muestra si fue cargado, su longitud y si contiene espacios.
