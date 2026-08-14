@@ -1,0 +1,91 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ReconciliationStatus {
+  PENDING
+  MATCHED
+  UNMATCHED
+  AMOUNT_DIFFERENCE
+  MANUAL_REVIEW
+}
+
+enum SyncStatus {
+  RUNNING
+  SUCCESS
+  PARTIAL
+  FAILED
+}
+
+model MetaAdAccount {
+  id              String            @id @default(uuid()) @db.Uuid
+  metaAccountId   String            @unique @map("meta_account_id")
+  metaObjectId    String?           @map("meta_object_id")
+  metaBusinessId  String?           @map("meta_business_id")
+  name            String
+  currency        String
+  timezoneName    String?           @map("timezone_name")
+  active          Boolean           @default(true)
+  lastSyncedAt    DateTime?         @map("last_synced_at") @db.Timestamptz(3)
+  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  transactions    MetaTransaction[]
+
+  @@index([metaBusinessId], map: "meta_ad_accounts_business_idx")
+  @@map("meta_ad_accounts")
+}
+
+model MetaTransaction {
+  id                         String               @id @default(uuid()) @db.Uuid
+  metaAccountId              String               @map("meta_account_id")
+  metaTransactionId          String?              @map("meta_transaction_id")
+  metaBusinessId             String?              @map("meta_business_id")
+  accountName                String               @map("account_name")
+  transactionDate            DateTime             @map("transaction_date") @db.Date
+  eventTime                  DateTime             @map("event_time") @db.Timestamptz(3)
+  currency                   String
+  amount                     Decimal              @db.Decimal(20, 2)
+  paymentMethod              String?              @map("payment_method")
+  lastFour                   String?              @map("last_four")
+  paymentMethodChanged       Boolean              @default(false) @map("payment_method_changed")
+  reconciliationStatus       ReconciliationStatus @default(PENDING) @map("reconciliation_status")
+  reconciliationObservation String?              @map("reconciliation_observation") @db.Text
+  rawData                    Json?                @map("raw_data")
+  syncedAt                   DateTime             @default(now()) @map("synced_at") @db.Timestamptz(3)
+  createdAt                  DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                  DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  account                    MetaAdAccount        @relation(fields: [metaAccountId], references: [metaAccountId], onUpdate: Cascade, onDelete: Restrict)
+
+  @@unique([metaAccountId, metaTransactionId, eventTime], map: "meta_transactions_external_event_key")
+  @@index([transactionDate], map: "meta_transactions_date_idx")
+  @@index([metaBusinessId], map: "meta_transactions_business_idx")
+  @@index([currency], map: "meta_transactions_currency_idx")
+  @@index([reconciliationStatus], map: "meta_transactions_reconciliation_idx")
+  @@map("meta_transactions")
+}
+
+model SyncRun {
+  id              String     @id @default(uuid()) @db.Uuid
+  source          String
+  year            Int
+  month           Int
+  status          SyncStatus @default(RUNNING)
+  startedAt       DateTime   @default(now()) @map("started_at") @db.Timestamptz(3)
+  finishedAt      DateTime?  @map("finished_at") @db.Timestamptz(3)
+  recordsReceived Int        @default(0) @map("records_received")
+  recordsCreated  Int        @default(0) @map("records_created")
+  recordsUpdated  Int        @default(0) @map("records_updated")
+  recordsFailed   Int        @default(0) @map("records_failed")
+  error           String?    @db.Text
+  createdAt       DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([source, year, month], map: "sync_runs_source_period_idx")
+  @@index([status], map: "sync_runs_status_idx")
+  @@map("sync_runs")
+}
