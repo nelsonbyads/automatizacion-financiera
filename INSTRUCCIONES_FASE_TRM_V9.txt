@@ -1,0 +1,108 @@
+FASE TRM V9 - IMPLEMENTACION
+============================
+
+OBJETIVO
+--------
+Guardar TRM histórica USD/COP en PostgreSQL y mostrar un COP estimado para los cobros Meta en USD.
+
+1. DETENER NODE/VITE
+--------------------
+Deja Docker Desktop y PostgreSQL encendidos.
+En la terminal donde corre npm run dev:
+
+Ctrl + C
+
+2. COPIAR LOS ARCHIVOS
+----------------------
+Copia el contenido del ZIP de cambios sobre tu proyecto actual respetando las carpetas.
+Reemplaza los archivos cuando Windows lo solicite.
+
+NO reemplaces tu archivo .env.
+NO borres Docker/PostgreSQL.
+NO borres las transacciones Meta actuales.
+
+3. PRISMA
+---------
+Esta fase agrega la tabla exchange_rates, por eso SI debes ejecutar:
+
+npm run prisma:generate
+npm run db:migrate:deploy
+
+La migracion NO elimina las transacciones existentes.
+
+4. VARIABLES DE ENTORNO
+-----------------------
+No es obligatorio modificar .env. El proyecto trae estos valores por defecto:
+
+TRM_HISTORICAL_URL=https://www.datos.gov.co/resource/32sa-8pi3.json
+TRM_CURRENT_URL=https://co.dolarapi.com/v1/trm
+
+SOCRATA_APP_TOKEN es opcional.
+
+Si prefieres dejarlos visibles en tu .env, puedes agregar:
+
+TRM_HISTORICAL_URL=https://www.datos.gov.co/resource/32sa-8pi3.json
+TRM_CURRENT_URL=https://co.dolarapi.com/v1/trm
+SOCRATA_APP_TOKEN=
+
+5. LEVANTAR EL PROYECTO
+-----------------------
+
+npm run dev
+
+6. VALIDAR POSTGRESQL
+---------------------
+Abre:
+
+http://localhost:3001/api/db/health
+
+Debe aparecer el nuevo contador exchangeRates.
+Antes de sincronizar puede ser 0.
+
+7. SINCRONIZAR TRM
+------------------
+En la interfaz selecciona Agosto 2026 y presiona:
+
+Sincronizar TRM
+
+Tambien puedes consultar:
+
+http://localhost:3001/api/trm/status?year=2026&month=8
+
+Debes ver covered_days > 0 y una lista de tasas por fecha.
+
+8. REVISAR EL 1 DE AGOSTO
+-------------------------
+Busca una transaccion USD del 2026-08-01.
+La tabla mostrara:
+
+- Valor USD
+- TRM COP/USD
+- COP estimado
+
+Para una transaccion de USD 100:
+COP estimado = 100 x TRM del 2026-08-01
+
+9. XLSX
+-------
+Descarga nuevamente el XLSX.
+La hoja Cobros tendra:
+
+- TRM COP/USD
+- COP estimado
+- Fuente TRM
+
+Y se agregara una hoja llamada TRM con el historico utilizado.
+
+NOTA IMPORTANTE
+---------------
+COP estimado es una referencia para conciliacion, no se marca automaticamente como cobro bancario exacto.
+El banco puede aplicar una tasa efectiva distinta. En la siguiente fase compararemos:
+
+- monto banco COP
+- monto Meta USD
+- TRM de referencia
+- tasa efectiva del banco
+- diferencia en COP y porcentaje
+- fecha +/- tolerancia
+- ultimos 4 de tarjeta

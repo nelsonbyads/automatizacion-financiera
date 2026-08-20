@@ -4,13 +4,15 @@ import {
   config,
   getSafeDatabaseConfigStatus,
   getSafeMetaConfigStatus,
+  getSafeTrmConfigStatus,
   validateDatabaseConfig,
 } from './config.js';
 import { disconnectPrisma } from './database/prisma.js';
 import { getDatabaseHealth } from './database/database.service.js';
-import { getLatestMetaSync, getStoredMonthlyCharges, syncMetaMonth } from './database/meta-sync.service.js';
+import { getLatestMetaSync, getStoredMonthlyCharges, getStoredTransactionPaymentDetail, syncMetaMonth } from './database/meta-sync.service.js';
 import { buildChargesWorkbook } from './excel.service.js';
-import { getMonthlyCharges } from './meta.service.js';
+import { getMetaBusinessStatus, getMonthlyCharges } from './meta.service.js';
+import { getStoredTrmStatus, syncTrmMonth } from './trm.service.js';
 
 const app = express();
 
@@ -42,11 +44,53 @@ app.get('/api/meta/config-status', (_req, res) => {
   });
 });
 
+app.get('/api/trm/config-status', (_req, res) => {
+  res.json({
+    ok: true,
+    ...getSafeTrmConfigStatus(),
+  });
+});
+
+app.get('/api/trm/status', async (req, res, next) => {
+  try {
+    validateDatabaseConfig();
+    res.json(await getStoredTrmStatus(req.query.year, req.query.month));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/trm/sync', async (req, res, next) => {
+  try {
+    validateDatabaseConfig();
+    res.json(await syncTrmMonth(req.body?.year, req.body?.month));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/meta/businesses/status', async (_req, res, next) => {
+  try {
+    res.json(await getMetaBusinessStatus());
+  } catch (error) {
+    next(error);
+  }
+});
+
 
 app.get('/api/meta/stored', async (req, res, next) => {
   try {
     validateDatabaseConfig();
     res.json(await getStoredMonthlyCharges(req.query.year, req.query.month));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.get('/api/meta/transactions/:transactionId/payment-debug', async (req, res, next) => {
+  try {
+    validateDatabaseConfig();
+    res.json(await getStoredTransactionPaymentDetail(req.params.transactionId));
   } catch (error) {
     next(error);
   }

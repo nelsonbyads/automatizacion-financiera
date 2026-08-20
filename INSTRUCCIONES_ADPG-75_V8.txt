@@ -1,0 +1,28 @@
+ADPG-75 - V8 Resolver Business propietario de cada Ad Account
+
+1. No reemplazar .env.
+2. Dejar Docker/PostgreSQL funcionando.
+3. Detener npm run dev con Ctrl+C.
+4. Copiar sobre el proyecto:
+   - server/meta.service.js
+   - src/App.jsx
+   - src/index.css
+   - README.md (opcional)
+5. No ejecutar migraciones: esta version no cambia el schema.
+6. No ejecutar npm install: no hay dependencias nuevas.
+7. Ejecutar:
+      npm run dev
+8. Antes de sincronizar revisar:
+      http://localhost:3001/api/meta/businesses/status
+   Ahora los Business pueden mostrar cuentas OWNED inferidas a partir del campo business de las Ad Accounts cliente.
+9. En la web ejecutar Sincronizar Meta para Agosto 2026.
+10. Revisar:
+      http://localhost:3001/api/db/health
+    y descargar nuevamente el XLSX.
+
+Resultado esperado:
+- Una cuenta obtenida como CLIENT de ByAds y cuyo owner sea GlobalCom se guarda como:
+  ByAds:CLIENT + GlobalCom:OWNED
+- La transaccion se contabiliza una sola vez.
+- Cobros consolidados muestra ambos Business IDs en esa cuenta.
+- Los tres Business configurados se muestran siempre en la nueva seccion del dashboard.

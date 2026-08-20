@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   CreditCard,
   Database,
+  DollarSign,
   Download,
   FileSpreadsheet,
   LoaderCircle,
@@ -49,6 +50,16 @@ function formatDateTime(value) {
   }).format(date);
 }
 
+function rowBusinessIds(row) {
+  if (row?.business_ids?.length) return row.business_ids.map(String);
+  return row?.business_id ? [String(row.business_id)] : [];
+}
+
+function businessIdsLabel(row) {
+  const ids = rowBusinessIds(row);
+  return ids.length ? ids.join(', ') : 'No disponible';
+}
+
 function MetricCard({ icon: Icon, label, value, helper, tone = 'cyan' }) {
   return (
     <article className="metric-card panel">
@@ -69,6 +80,7 @@ export default function App() {
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [syncingTrm, setSyncingTrm] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -87,36 +99,61 @@ export default function App() {
     const term = search.trim().toLowerCase();
 
     return rows.filter((row) => {
+      const businessIds = rowBusinessIds(row);
       const matchesSearch = !term ||
-        String(row.business_id || '').toLowerCase().includes(term) ||
+        businessIds.some((id) => id.toLowerCase().includes(term)) ||
         row.account_name.toLowerCase().includes(term) ||
         String(row.account_id).toLowerCase().includes(term) ||
         row.transactions?.some((tx) => String(tx.transaction_id).toLowerCase().includes(term));
       const matchesCurrency = currency === 'ALL' || row.currency === currency;
-      const matchesBusiness = business === 'ALL' || String(row.business_id || '') === business;
+      const matchesBusiness = business === 'ALL' || businessIds.includes(business);
       return matchesSearch && matchesCurrency && matchesBusiness;
     });
   }, [report, search, currency, business]);
 
   const availableBusinesses = useMemo(() => {
-    const ids = new Set((report?.rows || []).map((row) => String(row.business_id || '')).filter(Boolean));
-    return [...ids].sort();
+    const byId = new Map();
+
+    for (const item of report?.businesses || []) {
+      byId.set(String(item.business_id), item);
+    }
+
+    for (const row of report?.rows || []) {
+      for (const id of rowBusinessIds(row)) {
+        if (!byId.has(id)) byId.set(id, { business_id: id, accessible: true });
+      }
+    }
+
+    return [...byId.values()].sort((a, b) =>
+      String(a.business_id).localeCompare(String(b.business_id))
+    );
   }, [report]);
+
+  const inaccessibleBusinesses = useMemo(
+    () => (report?.businesses || []).filter((item) => item.accessible === false || item.last_error),
+    [report],
+  );
 
   const filteredSummary = useMemo(() => {
     const totals = {};
     const accounts = new Set();
     let transactions = 0;
     let paymentChanges = 0;
+    let estimatedCopFromUsd = 0;
+    let projectedCopFromUsd = 0;
 
     filteredRows.forEach((row) => {
       totals[row.currency] = (totals[row.currency] || 0) + Number(row.charged || 0);
       accounts.add(row.account_id);
       transactions += row.transactions?.length || 0;
       if (row.payment_changed) paymentChanges += 1;
+      if (row.currency === 'USD') {
+        estimatedCopFromUsd += Number(row.estimated_cop || 0);
+        projectedCopFromUsd += Number(row.projected_cop || 0);
+      }
     });
 
-    return { totals, accounts: accounts.size, transactions, paymentChanges };
+    return { totals, accounts: accounts.size, transactions, paymentChanges, estimatedCopFromUsd, projectedCopFromUsd };
   }, [filteredRows]);
 
   async function readJsonResponse(response, fallbackMessage) {
@@ -141,6 +178,32 @@ export default function App() {
     return body;
   }
 
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  async function fetchStoredReportWithRetry(params, attempts = 2) {
+    let lastError;
+
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      try {
+        const response = await fetch(`${API_BASE}/api/meta/stored?${params.toString()}`);
+        return await readJsonResponse(response, 'No fue posible consultar los datos almacenados.');
+      } catch (error) {
+        lastError = error;
+        const message = String(error?.message || '');
+        const retryable =
+          message.includes('no devolvió respuesta') ||
+          message.includes('Failed to fetch') ||
+          message.includes('fetch failed') ||
+          message.includes('NetworkError');
+
+        if (attempt >= attempts || !retryable) throw error;
+        await sleep(700);
+      }
+    }
+
+    throw lastError;
+  }
+
   async function loadReport() {
     setLoading(true);
     setError('');
@@ -149,8 +212,7 @@ export default function App() {
 
     try {
       const params = new URLSearchParams({ year: String(year), month: String(month) });
-      const response = await fetch(`${API_BASE}/api/meta/stored?${params.toString()}`);
-      const body = await readJsonResponse(response, 'No fue posible consultar los datos almacenados.');
+      const body = await fetchStoredReportWithRetry(params);
       setReport(body);
     } catch (requestError) {
       setReport(null);
@@ -176,15 +238,46 @@ export default function App() {
       setReport(body.report);
 
       const sync = body.sync;
+      const businesses = body.report?.businesses || [];
+      const accessible = businesses.filter((item) => item.accessible !== false).length;
       setSuccess(
         `Sincronización completada: ${sync?.records_received ?? 0} recibidas, ` +
         `${sync?.records_created ?? 0} nuevas, ${sync?.records_updated ?? 0} actualizadas` +
-        `${sync?.records_failed ? ` y ${sync.records_failed} con error` : ''}.`
+        `${sync?.records_failed ? ` y ${sync.records_failed} con error` : ''}. ` +
+        `Business accesibles: ${accessible}/${businesses.length}. ` +
+        (body.trm_sync_error
+          ? `TRM pendiente: ${body.trm_sync_error}`
+          : `TRM almacenada: ${body.report?.trm?.covered_days ?? 0} días.`)
       );
     } catch (syncError) {
       setError(syncError.message);
     } finally {
       setSyncing(false);
+    }
+  }
+
+  async function syncTrm() {
+    setSyncingTrm(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await fetch(`${API_BASE}/api/trm/sync`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ year, month }),
+      });
+      const trm = await readJsonResponse(response, 'No fue posible sincronizar la TRM.');
+
+      const params = new URLSearchParams({ year: String(year), month: String(month) });
+      const reportResponse = await fetch(`${API_BASE}/api/meta/stored?${params.toString()}`);
+      const updatedReport = await readJsonResponse(reportResponse, 'La TRM se guardó, pero no fue posible refrescar los cobros.');
+      setReport(updatedReport);
+      setSuccess(`TRM actualizada: ${trm.covered_days || 0} días disponibles para ${trm.period}.`);
+    } catch (syncError) {
+      setError(syncError.message);
+    } finally {
+      setSyncingTrm(false);
     }
   }
 
@@ -224,6 +317,7 @@ export default function App() {
     setError('');
     setSuccess('');
     setExpanded({});
+    setBusiness('ALL');
   }
 
   function toggleRow(key) {
@@ -266,23 +360,27 @@ export default function App() {
           <div className="period-controls">
             <label>
               <span>AÑO</span>
-              <select value={year} onChange={(event) => changePeriod(setYear, event.target.value)} disabled={loading || syncing}>
+              <select value={year} onChange={(event) => changePeriod(setYear, event.target.value)} disabled={loading || syncing || syncingTrm}>
                 {years.map((item) => <option key={item} value={item}>{item}</option>)}
               </select>
             </label>
             <label>
               <span>MES</span>
-              <select value={month} onChange={(event) => changePeriod(setMonth, event.target.value)} disabled={loading || syncing}>
+              <select value={month} onChange={(event) => changePeriod(setMonth, event.target.value)} disabled={loading || syncing || syncingTrm}>
                 {MONTHS.map((name, index) => <option key={name} value={index + 1}>{name}</option>)}
               </select>
             </label>
-            <button className="button button-primary" onClick={loadReport} disabled={loading || syncing}>
+            <button className="button button-primary" onClick={loadReport} disabled={loading || syncing || syncingTrm}>
               {loading ? <LoaderCircle className="spin" size={17} /> : <Database size={17} />}
               {loading ? 'Consultando...' : 'Consultar'}
             </button>
-            <button className="button button-ghost" onClick={syncMeta} disabled={loading || syncing} title="Consultar Meta y guardar/actualizar las transacciones en PostgreSQL">
+            <button className="button button-ghost" onClick={syncMeta} disabled={loading || syncing || syncingTrm} title="Consultar Meta y guardar/actualizar las transacciones en PostgreSQL">
               {syncing ? <LoaderCircle className="spin" size={17} /> : <RefreshCw size={17} />}
               {syncing ? 'Sincronizando...' : 'Sincronizar Meta'}
+            </button>
+            <button className="button button-ghost button-trm" onClick={syncTrm} disabled={loading || syncing || syncingTrm} title="Consultar la TRM histórica USD/COP y almacenarla en PostgreSQL">
+              {syncingTrm ? <LoaderCircle className="spin" size={17} /> : <DollarSign size={17} />}
+              {syncingTrm ? 'Sincronizando TRM...' : 'Sincronizar TRM'}
             </button>
           </div>
         </section>
@@ -333,8 +431,55 @@ export default function App() {
             <section className="metrics-grid">
               <MetricCard icon={CreditCard} label="Total COP" value={formatMoney(filteredSummary.totals.COP || 0, 'COP')} helper="Cobros del filtro actual" />
               <MetricCard icon={CreditCard} label="Total USD" value={formatMoney(filteredSummary.totals.USD || 0, 'USD')} helper="Cobros del filtro actual" tone="indigo" />
+              <MetricCard icon={DollarSign} label="USD referencia en COP" value={formatMoney(filteredSummary.estimatedCopFromUsd || 0, 'COP')} helper="USD × TRM oficial" tone="trm" />
+              <MetricCard icon={DollarSign} label="USD proyectado en COP" value={formatMoney(filteredSummary.projectedCopFromUsd || 0, 'COP')} helper={`TRM + ${Number(report.summary?.effective_spread_percent || 0).toFixed(2)}% spread`} tone="projection" />
               <MetricCard icon={FileSpreadsheet} label="Transacciones" value={filteredSummary.transactions} helper="Cargos individuales" tone="success" />
               <MetricCard icon={AlertTriangle} label="Cambios de método" value={filteredSummary.paymentChanges} helper="Registros con alerta" tone="warning" />
+            </section>
+
+            <section className="trm-overview panel">
+              <div>
+                <span className="eyebrow">TRM USD/COP</span>
+                <strong>{report.trm?.covered_days || 0} días con tasa almacenada</strong>
+                <span>Fuente histórica: Superintendencia Financiera · Datos Abiertos Colombia. La tasa proyectada agrega un spread configurable para aproximar la liquidación de la tarjeta; no reemplaza la tasa bancaria real.</span>
+              </div>
+              <div className="trm-overview-values">
+                <span>Desde <b>{report.trm?.first_date || '—'}</b></span>
+                <span>Hasta <b>{report.trm?.last_date || '—'}</b></span>
+                <span>Spread <b>{Number(report.summary?.effective_spread_percent || 0).toFixed(2)}%</b></span>
+                <span>Rango <b>{Number(report.summary?.effective_spread_min_percent || 0).toFixed(2)}%–{Number(report.summary?.effective_spread_max_percent || 0).toFixed(2)}%</b></span>
+              </div>
+            </section>
+
+            <section className="business-overview panel">
+              <div className="business-overview-heading">
+                <div>
+                  <h3>Business Meta configurados</h3>
+                  <span>Los Business sin cuentas o cobros también se muestran aquí. Cobros consolidados solo lista Business relacionados con una cuenta que tenga movimientos.</span>
+                </div>
+                <span className="business-overview-count">{availableBusinesses.length} configurados</span>
+              </div>
+
+              <div className="business-overview-grid">
+                {availableBusinesses.map((item) => (
+                  <article className="business-overview-item" key={item.business_id}>
+                    <div className="business-overview-top">
+                      <div>
+                        <strong>{item.name || 'Business Meta'}</strong>
+                        <span>{item.business_id}</span>
+                      </div>
+                      <span className={`business-status ${item.accessible === false ? 'business-status-error' : 'business-status-ok'}`}>
+                        {item.accessible === false ? 'Sin acceso' : 'Conectado'}
+                      </span>
+                    </div>
+                    <div className="business-overview-stats">
+                      <span><b>{item.owned_accounts ?? 0}</b> propias</span>
+                      <span><b>{item.client_accounts ?? 0}</b> cliente</span>
+                      <span><b>{item.unique_accounts ?? 0}</b> cuentas</span>
+                    </div>
+                  </article>
+                ))}
+              </div>
             </section>
 
             <section className="filters panel">
@@ -344,7 +489,11 @@ export default function App() {
               </div>
               <select value={business} onChange={(event) => setBusiness(event.target.value)}>
                 <option value="ALL">Todos los Business</option>
-                {availableBusinesses.map((id) => <option key={id} value={id}>{id}</option>)}
+                {availableBusinesses.map((item) => (
+                  <option key={item.business_id} value={item.business_id}>
+                    {item.business_id}{item.accessible === false ? ' · sin acceso' : ''}
+                  </option>
+                ))}
               </select>
               <select value={currency} onChange={(event) => setCurrency(event.target.value)}>
                 <option value="ALL">Todas las monedas</option>
@@ -354,12 +503,24 @@ export default function App() {
               <span className="record-count">{filteredRows.length} registros · {filteredSummary.accounts} cuentas</span>
             </section>
 
-            {report.errors.length > 0 && (
+            {inaccessibleBusinesses.length > 0 && (
               <section className="warning-box">
                 <AlertTriangle size={18} />
-                <span>{report.errors.length} cuenta(s) no pudieron procesarse completamente. El Excel incluye los datos disponibles del período.</span>
+                <span>
+                  {inaccessibleBusinesses.length} Business tienen errores o acceso parcial. Revisa la hoja “Business Meta” del XLSX o el endpoint /api/meta/businesses/status para ver el detalle.
+                </span>
               </section>
             )}
+
+            <section className="warning-box">
+              <AlertTriangle size={18} />
+              <span>Una cuenta publicitaria compartida puede pertenecer a varios Business. “Todos los Business” contabiliza cada cobro una sola vez para evitar duplicar valores.</span>
+            </section>
+
+            <section className="warning-box payment-warning">
+              <CreditCard size={18} />
+              <span>La tarjeta predeterminada de una cuenta no se usa como tarjeta histórica del cobro. Si Meta no entrega un método vinculado a la transacción, se mostrará “No disponible” en lugar de atribuir una tarjeta incorrecta.</span>
+            </section>
 
             <section className="table-card panel">
               <div className="table-title">
@@ -374,12 +535,15 @@ export default function App() {
                   <thead>
                     <tr>
                       <th>Fecha</th>
-                      <th>Business ID</th>
+                      <th>Business IDs</th>
                       <th>Cuenta publicitaria</th>
                       <th>Moneda</th>
                       <th>Total cobrado</th>
+                      <th>TRM oficial</th>
+                      <th>Tasa proyectada</th>
+                      <th>COP proyectado</th>
                       <th>Cobros</th>
-                      <th>Método de pago</th>
+                      <th>Método transacción</th>
                       <th>Últimos 4</th>
                       <th>Cambio</th>
                       <th></th>
@@ -387,36 +551,49 @@ export default function App() {
                   </thead>
                   <tbody>
                     {filteredRows.length === 0 ? (
-                      <tr><td colSpan="10" className="no-results">No hay registros para los filtros seleccionados.</td></tr>
+                      <tr><td colSpan="13" className="no-results">No hay registros para los filtros seleccionados.</td></tr>
                     ) : filteredRows.map((row) => {
-                      const key = `${row.date}-${row.business_id || 'business'}-${row.account_id}-${row.currency}`;
+                      const key = `${row.date}-${row.account_id}-${row.currency}`;
                       const isOpen = Boolean(expanded[key]);
                       return (
                         <React.Fragment key={key}>
                           <tr className="data-row" onClick={() => toggleRow(key)}>
                             <td>{row.date}</td>
-                            <td>{row.business_id || 'No disponible'}</td>
+                            <td title={businessIdsLabel(row)}>{businessIdsLabel(row)}</td>
                             <td><strong>{row.account_name}</strong><span>ID {row.account_id}</span></td>
                             <td><span className="currency-pill">{row.currency}</span></td>
                             <td className="amount">{formatMoney(row.charged, row.currency)}</td>
+                            <td className="trm-cell">{row.currency === 'USD' && row.trm_rate ? Number(row.trm_rate).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '—'}</td>
+                            <td className="projected-rate">{row.currency === 'USD' && row.effective_rate_estimate ? Number(row.effective_rate_estimate).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '—'}</td>
+                            <td className="projected-cop" title={row.currency === 'USD' && row.projected_cop_min != null ? `Rango esperado: ${formatMoney(row.projected_cop_min, 'COP')} a ${formatMoney(row.projected_cop_max, 'COP')}` : ''}>{row.currency === 'USD' && row.projected_cop != null ? formatMoney(row.projected_cop, 'COP') : '—'}</td>
                             <td>{row.transactions?.length || 0}</td>
-                            <td>{row.payment_method}</td>
+                            <td title="Solo métodos vinculados a la transacción; no usa la tarjeta predeterminada como histórico.">{row.payment_method}</td>
                             <td>{row.last4}</td>
                             <td>{row.payment_changed ? <span className="badge badge-warning">Sí</span> : <span className="badge badge-ok">No</span>}</td>
                             <td>{isOpen ? <ChevronUp size={17} /> : <ChevronDown size={17} />}</td>
                           </tr>
                           {isOpen && (
                             <tr className="detail-row">
-                              <td colSpan="10">
+                              <td colSpan="13">
                                 <div className="transaction-box">
                                   <div className="transaction-title"><CreditCard size={16} /> Transacciones</div>
                                   <table className="transaction-table">
-                                    <thead><tr><th>Transaction ID</th><th>Valor</th><th>Fecha y hora Meta</th></tr></thead>
+                                    <thead><tr><th>Transaction ID</th><th>Valor</th><th>Tarjeta transacción</th><th>Últimos 4</th><th>Fuente método</th><th>Estado</th><th>Factura IVA</th><th>Predeterminado cuenta</th><th>TRM oficial</th><th>Tasa proyectada</th><th>COP proyectado</th><th>Rango esperado</th><th>Fecha y hora Meta</th></tr></thead>
                                     <tbody>
                                       {(row.transactions || []).map((tx, index) => (
                                         <tr key={`${tx.transaction_id}-${index}`}>
                                           <td>{tx.transaction_id}</td>
                                           <td>{formatMoney(tx.amount, tx.currency)}</td>
+                                          <td>{tx.payment_method_source !== 'UNAVAILABLE' ? (tx.payment_method || 'No disponible') : 'No disponible'}</td>
+                                          <td>{tx.payment_method_source !== 'UNAVAILABLE' ? (tx.last4 || '—') : '—'}</td>
+                                          <td><span className={`payment-source ${tx.payment_method_source === 'UNAVAILABLE' ? 'payment-source-warning' : ''}`}>{tx.payment_method_source === 'TRANSACTION_EXTRA_DATA' ? 'Meta / transacción' : tx.payment_method_source === 'TRANSACTION_FUNDING_SOURCE_MATCH' ? 'Funding source exacto' : 'No disponible'}</span></td>
+                                          <td>{tx.payment_status || 'PAID'}</td>
+                                          <td>{tx.invoice_id || '—'}</td>
+                                          <td title="Referencia actual de la cuenta, no necesariamente la tarjeta usada históricamente.">{tx.account_default_payment_method || '—'}</td>
+                                          <td>{tx.currency === 'USD' && tx.trm_rate ? Number(tx.trm_rate).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '—'}</td>
+                                          <td className="projected-rate">{tx.currency === 'USD' && tx.effective_rate_estimate ? Number(tx.effective_rate_estimate).toLocaleString('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 4 }) : '—'}</td>
+                                          <td className="projected-cop">{tx.currency === 'USD' && tx.projected_cop != null ? formatMoney(tx.projected_cop, 'COP') : '—'}</td>
+                                          <td>{tx.currency === 'USD' && tx.projected_cop_min != null ? `${formatMoney(tx.projected_cop_min, 'COP')} – ${formatMoney(tx.projected_cop_max, 'COP')}` : '—'}</td>
                                           <td>{formatDateTime(tx.event_time)}</td>
                                         </tr>
                                       ))}

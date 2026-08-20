@@ -1,201 +1,241 @@
 # Meta Finance Hub
 
-Portal interno para consultar cobros mensuales de cuentas publicitarias de Meta, revisar el detalle financiero y exportar la información a XLSX. Esta versión incorpora la base de infraestructura para persistencia histórica con PostgreSQL + Prisma.
+Módulo de auditoría financiera para consultar cobros de Meta Ads por mes, persistirlos en PostgreSQL y exportarlos a XLSX.
 
-## Arquitectura actual
+## Versión 3.2 - múltiples Meta Business correctamente relacionados
+
+Esta versión amplía la sincronización para trabajar con varios `META_BUSINESS_IDS` sin duplicar cobros cuando una misma cuenta publicitaria está compartida entre Business Managers.
+
+Por cada Business configurado se consultan dos relaciones de Meta:
+
+- `/{BUSINESS_ID}/owned_ad_accounts`: cuentas propiedad del Business.
+- `/{BUSINESS_ID}/client_ad_accounts`: cuentas de clientes/partners asignadas al Business.
+
+El backend consolida las cuentas por `account_id`, consulta las actividades financieras una sola vez por cuenta y conserva en PostgreSQL todas las relaciones Business ↔ Ad Account.
+
+## Arquitectura
 
 ```text
-React / Vite
-    |
-    v
-Node.js / Express
-    |----------> Meta Graph API
-    |
-    +----------> Prisma -> PostgreSQL (Docker)
+Meta Business 1 -- owned/client --┐
+Meta Business 2 -- owned/client --+--> cuentas únicas --> activities --> Node/Express
+Meta Business 3 -- owned/client --┘                                |
+                                                                  Prisma
+                                                                    |
+                                                               PostgreSQL
+                                                                    |
+                                                             React / XLSX
 ```
 
-En esta fase la consulta de cobros sigue viniendo directamente de Meta. PostgreSQL ya queda creado y conectado; la persistencia de las transacciones se implementará en la siguiente fase.
+## Configuración `.env`
 
-## Requisitos
-
-- Node.js 18+
-- npm
-- Docker Desktop con Docker Compose
-- Token y Business ID de Meta con los permisos requeridos
-
-## Configuración inicial
-
-```bash
-npm install
-cp .env.example .env
-```
-
-Configura `.env` con tus valores reales. Nunca subas `.env` a Git.
-
-Variables principales:
+Conserva tu token actual y configura los Business separados por coma:
 
 ```env
-PORT=3001
-FRONTEND_ORIGIN=http://localhost:5173
-
-META_ACCESS_TOKEN=tu_token
-META_BUSINESS_ID=tu_business_id
+META_ACCESS_TOKEN=TU_TOKEN_META
+META_BUSINESS_IDS=BUSINESS_ID_1,BUSINESS_ID_2,BUSINESS_ID_3
 META_GRAPH_VERSION=v25.0
-META_CACHE_TTL_SECONDS=300
-
-POSTGRES_USER=finance_user
-POSTGRES_PASSWORD=tu_clave_local
-POSTGRES_DB=finance_db
-POSTGRES_PORT=5432
-DATABASE_URL=postgresql://finance_user:tu_clave_local@localhost:5432/finance_db?schema=public
 ```
 
-`POSTGRES_PASSWORD` y la contraseña incluida en `DATABASE_URL` deben coincidir.
+No subas `.env` a Git.
 
-## PostgreSQL con Docker
+## Implementación sobre V6
 
-Levantar únicamente PostgreSQL:
-
-```bash
-npm run db:up
-```
-
-Verificar el contenedor:
-
-```bash
-npm run db:status
-```
-
-Ver logs:
-
-```bash
-npm run db:logs
-```
-
-Detener los contenedores conservando el volumen de datos:
-
-```bash
-npm run db:down
-```
-
-> No uses `docker compose down -v` salvo que quieras eliminar también la base de datos local.
-
-## Prisma
-
-Generar Prisma Client:
+1. Detén solamente Node/Vite con `Ctrl + C`. Docker puede seguir arriba.
+2. Copia los archivos de este cambio sobre el proyecto actual.
+3. **No reemplaces `.env`.**
+4. Genera nuevamente Prisma Client:
 
 ```bash
 npm run prisma:generate
 ```
 
-La migración inicial ya está incluida en `prisma/migrations`. Para aplicarla en la base local:
+5. Aplica la migración nueva:
 
 ```bash
 npm run db:migrate:deploy
 ```
 
-Para futuros cambios de esquema durante desarrollo:
+La migración crea:
 
-```bash
-npm run db:migrate -- --name nombre_del_cambio
-npm run prisma:generate
-```
+- `meta_businesses`
+- `meta_business_accounts`
+- enum `MetaAccountRelationship` (`OWNED`, `CLIENT`)
 
-Abrir Prisma Studio:
+También migra la relación histórica existente de V6 como `OWNED`. No elimina `meta_transactions` ni los cobros ya almacenados.
 
-```bash
-npm run db:studio
-```
-
-## Ejecutar aplicación
+6. Levanta el proyecto:
 
 ```bash
 npm run dev
 ```
 
-- Frontend: `http://localhost:5173`
-- API: `http://localhost:3001`
-- Health API: `http://localhost:3001/api/health`
-- Health PostgreSQL: `http://localhost:3001/api/db/health`
-- Estado seguro Meta: `http://localhost:3001/api/meta/config-status`
+## Verificación
 
-## Tablas de esta fase
-
-### `meta_ad_accounts`
-Catálogo de cuentas publicitarias de Meta.
-
-### `meta_transactions`
-Base para almacenar cada cobro individual, método de pago y estado futuro de conciliación.
-
-Estados de conciliación preparados:
-
-- `PENDING`
-- `MATCHED`
-- `UNMATCHED`
-- `AMOUNT_DIFFERENCE`
-- `MANUAL_REVIEW`
-
-### `sync_runs`
-Auditoría de cada sincronización por fuente, año y mes, incluyendo registros recibidos, creados, actualizados y fallidos.
-
-## Endpoints Meta existentes
+### Configuración
 
 ```text
-GET /api/meta/charges?year=2026&month=8
-GET /api/meta/charges/summary?year=2026&month=8
-GET /api/meta/charges/export?year=2026&month=8
+http://localhost:3001/api/meta/config-status
 ```
 
-## Seguridad
+Debe mostrar el número correcto en `businessIdsCount`.
 
-- `.env` está ignorado por Git.
-- El token de Meta solo se usa en backend.
-- Los endpoints de diagnóstico no exponen el token ni la `DATABASE_URL`.
-- No versionar reportes financieros ni XLSX generados.
-
-## Próxima fase
-
-Persistir los resultados de Meta mediante `upsert`, registrar cada sincronización en `sync_runs` y cambiar el flujo a:
+### Acceso y cuentas por Business
 
 ```text
-Meta -> sincronizar -> PostgreSQL -> consultar -> React / XLSX
+http://localhost:3001/api/meta/businesses/status
 ```
 
-## Fase 3 - Sincronizacion Meta -> PostgreSQL
-
-El portal separa ahora dos acciones:
-
-- **Consultar**: lee exclusivamente la informacion almacenada en PostgreSQL.
-- **Sincronizar Meta**: consulta Meta Graph API, guarda/actualiza cuentas y transacciones mediante Prisma y registra una ejecucion en `sync_runs`.
-
-### Endpoints de persistencia
-
-```text
-GET  /api/meta/stored?year=2026&month=8
-POST /api/meta/sync
-GET  /api/meta/sync/status?year=2026&month=8
-GET  /api/meta/stored/export?year=2026&month=8
-```
-
-Body de sincronizacion:
+Ejemplo esperado:
 
 ```json
 {
-  "year": 2026,
-  "month": 8
+  "ok": true,
+  "configured": 3,
+  "accessible": 3,
+  "unique_accounts": 52,
+  "businesses": [
+    {
+      "business_id": "...",
+      "accessible": true,
+      "owned_accounts": 39,
+      "client_accounts": 0,
+      "unique_accounts": 39,
+      "errors": []
+    }
+  ]
 }
 ```
 
-La sincronizacion usa `upsert` para evitar duplicar una misma transaccion al sincronizar repetidamente el mismo periodo. Cada ejecucion queda registrada en `sync_runs` con cantidades recibidas, creadas, actualizadas y fallidas.
+Si un Business no tiene permisos, este endpoint indica cuál falló y el mensaje devuelto por Meta.
 
-## Varios Business Manager de Meta
+### PostgreSQL
 
-Configura uno o varios Business ID separados por coma:
-
-```env
-META_BUSINESS_IDS=123456789012345,987654321098765
+```text
+http://localhost:3001/api/db/health
 ```
 
-El backend consulta `owned_ad_accounts` de cada Business configurado, consolida las cuentas por `account_id` y guarda el `Business ID` de origen en PostgreSQL. `META_BUSINESS_ID` sigue funcionando como compatibilidad para instalaciones anteriores, pero `META_BUSINESS_IDS` tiene prioridad.
+Ahora incluye:
 
-Después de cambiar la lista debes reiniciar `npm run dev` y volver a ejecutar **Sincronizar Meta** para completar el Business ID en los registros existentes.
+- `metaBusinesses`
+- `metaBusinessAccounts`
+- `metaAdAccounts`
+- `metaTransactions`
+- `syncRuns`
+
+## Sincronización
+
+Desde el portal presiona **Sincronizar Meta**.
+
+La sincronización:
+
+1. Recorre todos los `META_BUSINESS_IDS`.
+2. Consulta cuentas `OWNED` y `CLIENT`.
+3. Consolida cuentas compartidas por `account_id`.
+4. Consulta los cobros una sola vez por cuenta.
+5. Guarda todos los vínculos Business ↔ Ad Account.
+6. Hace `upsert` de transacciones para evitar duplicados.
+
+Una cuenta compartida puede aparecer asociada a varios Business en el filtro, pero en **Todos los Business** su valor se suma una sola vez.
+
+## XLSX
+
+El archivo contiene:
+
+- `Cobros`: detalle financiero con todos los Business IDs asociados a la cuenta.
+- `Resumen`: totales y cantidad de Business configurados/accesibles.
+- `Business Meta`: estado de cada Business, cantidad de cuentas propias/cliente y último error.
+
+## Endpoints principales
+
+```text
+GET  /api/health
+GET  /api/db/health
+GET  /api/meta/config-status
+GET  /api/meta/businesses/status
+GET  /api/meta/stored?year=2026&month=8
+POST /api/meta/sync
+GET  /api/meta/stored/export?year=2026&month=8
+```
+
+## ADPG-75 V8 - Resolucion del Business propietario
+
+La sincronizacion consulta `owned_ad_accounts` y `client_ad_accounts` de cada Business configurado. Ademas solicita el campo `business` de cada Ad Account para resolver el Business propietario real.
+
+Ejemplo: una cuenta encontrada en ByAds como CLIENT puede pertenecer realmente a GlobalCom. En ese caso se conserva la relacion completa:
+
+- ByAds: CLIENT
+- GlobalCom: OWNED
+
+El cobro se consulta y almacena una sola vez; la cuenta puede filtrarse por cualquiera de sus Business relacionados sin duplicar el valor financiero.
+
+El dashboard incluye una seccion **Business Meta configurados** para mostrar todos los IDs configurados, incluso cuando un Business no tenga cuentas/cobros durante el periodo.
+
+No requiere una nueva migracion ni nuevas dependencias. Despues de copiar los cambios, reiniciar la aplicacion y ejecutar **Sincronizar Meta** para reconstruir las relaciones Business <-> Ad Account en PostgreSQL.
+
+## Fase TRM USD/COP
+
+La aplicación puede almacenar la TRM histórica USD/COP y calcular un valor estimado en pesos colombianos para cada cobro de Meta cuya moneda sea USD.
+
+### Fuentes
+
+- Histórico principal: dataset oficial de TRM suministrado por la Superintendencia Financiera de Colombia en Datos Abiertos Colombia (`32sa-8pi3`).
+- Respaldo para la TRM vigente del día: DolarAPI Colombia `/v1/trm`, que publica la TRM oficial proveniente de la Superintendencia Financiera.
+
+La fuente de respaldo no se usa para inventar histórico. Si falta una fecha histórica, el sistema la deja sin tasa para revisión.
+
+### Flujo
+
+1. `Sincronizar Meta` guarda los cobros y después intenta sincronizar la TRM del mes automáticamente.
+2. `Sincronizar TRM` permite actualizar únicamente las tasas sin volver a consultar Meta.
+3. PostgreSQL almacena una tasa USD/COP por fecha en `exchange_rates`.
+4. Al consultar el período, cada transacción USD recibe `trm_rate` y `estimated_cop`.
+5. El XLSX incluye las columnas `TRM COP/USD`, `COP estimado`, `Fuente TRM` y una hoja adicional `TRM`.
+
+### Endpoints
+
+```text
+GET  /api/trm/config-status
+GET  /api/trm/status?year=2026&month=8
+POST /api/trm/sync
+     body: { "year": 2026, "month": 8 }
+```
+
+### Variables opcionales
+
+```env
+TRM_HISTORICAL_URL=https://www.datos.gov.co/resource/32sa-8pi3.json
+TRM_CURRENT_URL=https://co.dolarapi.com/v1/trm
+SOCRATA_APP_TOKEN=
+```
+
+No es obligatorio definirlas para desarrollo local porque existen valores por defecto. `SOCRATA_APP_TOKEN` es opcional.
+
+
+## V9.2 - Proyección de liquidación USD/COP
+
+La TRM oficial se conserva como referencia. Para apoyar la conciliación, el reporte calcula además una tasa proyectada usando un spread configurable (0.48% por defecto) y un rango esperado (0.44%-0.52% por defecto). Esto es una aproximación; la tasa bancaria exacta se obtendrá al cruzar cada movimiento del extracto bancario contra su transacción Meta.
+
+## V9.3 - Metodo de pago por transaccion
+
+Correccion importante para conciliacion bancaria: el proyecto ya no asigna a los cobros historicos la tarjeta predeterminada actual de la cuenta publicitaria.
+
+Para cada `ad_account_billing_charge` se intenta extraer el metodo de pago desde los datos propios de la actividad (`extra_data` y texto traducido de la actividad). Solo cuando la actividad referencia explicitamente el mismo `funding_source` de la cuenta se permite usar el detalle del funding source como metodo de esa transaccion.
+
+Si Meta no entrega un metodo de pago vinculable a la transaccion, el sistema guarda `UNAVAILABLE` y muestra `No disponible` en lugar de atribuir una tarjeta potencialmente incorrecta.
+
+Se guardan por transaccion:
+
+- `payment_method`
+- `last_four`
+- `payment_method_source`
+- `payment_status`
+- `invoice_id`
+- metodo predeterminado actual de la cuenta, solo como referencia separada
+
+Endpoint local de diagnostico:
+
+```text
+GET /api/meta/transactions/{TRANSACTION_ID}/payment-debug
+```
+
+El endpoint no muestra el access token. Sirve para confirmar que metodo encontro el parser y que llaves devolvio Meta dentro de `extra_data` para una transaccion ya sincronizada.

@@ -1,0 +1,11 @@
+ADPG-74 - Ajuste V9.1
+
+1. Detener npm run dev con Ctrl+C.
+2. Reemplazar src/App.jsx por el incluido en este ZIP.
+3. No modificar .env, Prisma ni Docker.
+4. Ejecutar npm run dev.
+
+Cambios:
+- Consultar reintenta automaticamente una vez si la API devuelve una respuesta vacia o un error de red transitorio.
+- La TRM se presenta como referencia, no como tasa bancaria final.
+- COP estimado pasa a mostrarse como COP referencia TRM.

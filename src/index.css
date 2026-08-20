@@ -83,6 +83,24 @@ select:focus, .search-box:focus-within { border-color: rgba(34, 211, 238, .55); 
 .metric-value { font-size: 20px; margin-top: 3px; }
 .metric-helper { color: #617590; font-size: 11px; margin-top: 3px; }
 
+.business-overview { margin-top: 14px; padding: 16px; }
+.business-overview-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 13px; }
+.business-overview-heading h3 { font-size: 15px; }
+.business-overview-heading span { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; line-height: 1.45; }
+.business-overview-count { flex: 0 0 auto; color: #a5f3fc !important; background: rgba(34, 211, 238, .08); border: 1px solid rgba(34, 211, 238, .14); border-radius: 999px; padding: 6px 9px; margin-top: 0 !important; font-weight: 800; }
+.business-overview-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.business-overview-item { background: rgba(7, 17, 31, .42); border: 1px solid var(--line); border-radius: 12px; padding: 13px; }
+.business-overview-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.business-overview-top strong, .business-overview-top span { display: block; }
+.business-overview-top strong { font-size: 13px; color: #eff6ff; }
+.business-overview-top > div > span { margin-top: 3px; font-size: 10px; color: #7186a1; word-break: break-all; }
+.business-status { flex: 0 0 auto; border-radius: 999px; padding: 4px 7px; font-size: 9px !important; font-weight: 800; }
+.business-status-ok { color: #6ee7b7 !important; background: rgba(52, 211, 153, .08); }
+.business-status-error { color: #fecdd3 !important; background: rgba(251, 113, 133, .08); }
+.business-overview-stats { margin-top: 11px; display: flex; flex-wrap: wrap; gap: 7px; }
+.business-overview-stats span { color: var(--muted); background: rgba(148, 163, 184, .06); border-radius: 7px; padding: 5px 7px; font-size: 10px; }
+.business-overview-stats b { color: #e5eefb; }
+
 .filters { margin-top: 14px; padding: 13px; display: flex; align-items: center; gap: 10px; }
 .search-box { flex: 1; min-width: 260px; height: 42px; display: flex; align-items: center; gap: 9px; padding: 0 12px; }
 .search-box svg { color: var(--muted); }
@@ -100,9 +118,9 @@ th { text-align: left; color: #7f93ad; font-size: 10px; letter-spacing: .09em; t
 td { padding: 14px; border-bottom: 1px solid rgba(148, 163, 184, .08); font-size: 13px; color: #cbd5e1; vertical-align: middle; }
 .data-row { cursor: pointer; transition: background .15s ease; }
 .data-row:hover { background: rgba(34, 211, 238, .035); }
-.data-row td:nth-child(2) strong, .data-row td:nth-child(2) span { display: block; }
-.data-row td:nth-child(2) strong { color: #eff6ff; font-size: 13px; }
-.data-row td:nth-child(2) span { color: #64748b; font-size: 11px; margin-top: 2px; }
+.data-row td:nth-child(3) strong, .data-row td:nth-child(3) span { display: block; }
+.data-row td:nth-child(3) strong { color: #eff6ff; font-size: 13px; }
+.data-row td:nth-child(3) span { color: #64748b; font-size: 11px; margin-top: 2px; }
 .amount { color: #67e8f9; font-weight: 800; white-space: nowrap; }
 .currency-pill { display: inline-flex; padding: 4px 7px; border-radius: 7px; background: rgba(129, 140, 248, .1); color: #c7d2fe; font-size: 11px; font-weight: 800; }
 .badge { display: inline-flex; padding: 4px 8px; border-radius: 999px; font-size: 10px; font-weight: 800; }
@@ -118,6 +136,7 @@ td { padding: 14px; border-bottom: 1px solid rgba(148, 163, 184, .08); font-size
 @media (max-width: 1050px) {
   .period-panel { align-items: flex-start; flex-direction: column; }
   .metrics-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .business-overview-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 700px) {
   .topbar { padding: 0 18px; }
@@ -129,8 +148,55 @@ td { padding: 14px; border-bottom: 1px solid rgba(148, 163, 184, .08); font-size
   .filters { align-items: stretch; flex-direction: column; }
   .search-box, .filters select { width: 100%; }
   .record-count { margin-left: 0; }
+  .business-overview-heading { flex-direction: column; }
 }
 
 .success-box { margin-top: 20px; border-radius: 13px; padding: 14px 16px; display: flex; align-items: center; gap: 11px; color: #a7f3d0; background: rgba(52, 211, 153, .08); border: 1px solid rgba(52, 211, 153, .18); }
 .success-box strong, .success-box span { display: block; }
 .success-box span { margin-top: 3px; font-size: 13px; opacity: .86; }
+
+.button-trm { border-color: rgba(45, 212, 191, .28); color: #99f6e4; }
+.metric-trm { color: #2dd4bf; background: rgba(45, 212, 191, .1); }
+.metric-projection { color: #fbbf24; background: rgba(251, 191, 36, .1); }
+.trm-overview { margin-top: 14px; padding: 15px 17px; display: flex; align-items: center; justify-content: space-between; gap: 18px; }
+.trm-overview > div:first-child strong, .trm-overview > div:first-child span { display: block; }
+.trm-overview > div:first-child strong { margin-top: 4px; color: #eff6ff; font-size: 14px; }
+.trm-overview > div:first-child span:last-child { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+.trm-overview-values { display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end; }
+.trm-overview-values span { background: rgba(45, 212, 191, .07); border: 1px solid rgba(45, 212, 191, .12); border-radius: 8px; padding: 7px 9px; color: #94a3b8; font-size: 10px; white-space: nowrap; }
+.trm-overview-values b { color: #ccfbf1; }
+.trm-cell { color: #99f6e4; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.estimated-cop { color: #5eead4; font-weight: 800; white-space: nowrap; }
+.projected-rate { color: #fde68a; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.projected-cop { color: #fbbf24; font-weight: 800; white-space: nowrap; }
+
+@media (min-width: 1250px) {
+  .metrics-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+@media (max-width: 700px) {
+  .trm-overview { align-items: flex-start; flex-direction: column; }
+  .trm-overview-values { justify-content: flex-start; }
+}
+
+/* Transaction-scoped payment metadata (ADPG-74 / V9.3) */
+.payment-warning {
+  border-style: solid;
+}
+
+.payment-source {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  font-size: 0.72rem;
+  padding: 0.18rem 0.42rem;
+  border-radius: 999px;
+  background: rgba(16, 185, 129, 0.12);
+}
+
+.payment-source-warning {
+  background: rgba(245, 158, 11, 0.14);
+}
+
+.transaction-table {
+  min-width: 1780px;
+}
