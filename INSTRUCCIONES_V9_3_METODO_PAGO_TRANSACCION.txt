@@ -1,0 +1,71 @@
+ADPG-74 / V9.3 - CORRECCION METODO DE PAGO POR TRANSACCION
+============================================================
+
+OBJETIVO
+--------
+Evitar que una transaccion historica herede la tarjeta predeterminada actual de la cuenta Meta.
+
+EJEMPLO DE ACEPTACION
+---------------------
+Transaction ID:
+28027210243635773-27957771887246270
+
+La pantalla de Meta muestra que fue pagada con Mastercard ****3107.
+La version anterior podia mostrar ****9082 porque 9082 era el metodo predeterminado de la cuenta.
+
+V9.3 cambia la regla:
+- Metodo vinculado a la actividad/transaccion -> se usa.
+- Funding source explicitamente vinculado a la actividad y coincide con el funding source detallado -> se usa.
+- Sin dato transaccional -> No disponible.
+- La tarjeta predeterminada queda solo como referencia y nunca se presenta como historica por defecto.
+
+IMPLEMENTACION
+--------------
+1. Detener Node/Vite con Ctrl+C. Docker/PostgreSQL pueden permanecer arriba.
+2. Copiar el contenido del ZIP pequeno sobre el proyecto actual respetando las carpetas.
+3. NO reemplazar .env.
+4. Ejecutar:
+
+   npm run prisma:generate
+   npm run db:migrate:deploy
+   npm run dev
+
+5. En Agosto 2026 pulsar "Sincronizar Meta" una vez para reescribir las transacciones existentes con la nueva regla.
+6. Luego pulsar "Consultar" y descargar nuevamente el XLSX.
+
+DIAGNOSTICO DE LA TRANSACCION DE PRUEBA
+----------------------------------------
+Abrir en el navegador:
+
+http://localhost:3001/api/meta/transactions/28027210243635773-27957771887246270/payment-debug
+
+Resultados esperados posibles:
+
+A) Meta entrega el metodo a nivel de transaccion:
+   payment_method: "Mastercard ****3107"
+   last4: "3107"
+   payment_method_source: "TRANSACTION_EXTRA_DATA"
+
+B) Meta no expone el metodo en el activity extra_data:
+   payment_method: null
+   last4: null
+   payment_method_source: "UNAVAILABLE"
+   account_default_payment_method: "Mastercard *9082"
+
+El caso B es intencionalmente mas seguro que mostrar 9082 como si fuera la tarjeta historica.
+La propiedad activity_extra_keys permite revisar que campos devolvio Meta sin mostrar el access token.
+
+XLSX
+----
+La hoja Cobros ahora separa:
+- Metodo pago transaccion
+- Ultimos 4 transaccion
+- Fuente metodo pago
+- Estado pago Meta
+- Identificador factura IVA
+- Metodo predeterminado cuenta
+- Ultimos 4 predeterminado
+
+IMPORTANTE
+----------
+La disponibilidad del metodo exacto depende de lo que Meta entregue en el AdActivity de esa transaccion. El SDK oficial documenta `extra_data` como campo de AdActivity y distingue eventos de billing charge exitosos y fallidos, pero no garantiza un esquema publico estable para los campos internos de `extra_data`.

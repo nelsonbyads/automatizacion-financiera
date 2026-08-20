@@ -1,0 +1,31 @@
+ADPG-74 - V9.3.1 - Correccion de metodo de pago no verificado
+
+OBJETIVO
+Evitar que una tarjeta historica/no verificada se muestre como metodo de pago de una transaccion cuando payment_method_source = UNAVAILABLE.
+
+CAMBIOS
+- Si payment_method_source es UNAVAILABLE, payment_method y last4 se exponen como null/No disponible.
+- El XLSX no exporta una tarjeta como transaccional si la fuente es UNAVAILABLE.
+- El frontend no muestra ultimos 4 no verificados como si fueran de la transaccion.
+- El endpoint payment-debug indica payment_method_verified y puede mostrar el dato legacy descartado para diagnostico.
+- En la siguiente Sincronizar Meta, PostgreSQL limpia payment_method/last_four de registros cuya fuente es UNAVAILABLE.
+
+IMPLEMENTACION
+1. Dejar Docker/PostgreSQL encendido.
+2. Detener npm run dev con Ctrl+C.
+3. Reemplazar los archivos del parche respetando sus carpetas.
+4. No modificar .env.
+5. No ejecutar npm install, prisma:generate ni migraciones: no cambian dependencias ni esquema.
+6. Ejecutar: npm run dev
+7. Presionar Sincronizar Meta para Agosto 2026 una vez para limpiar los valores historicos no verificados en PostgreSQL.
+8. Consultar de nuevo.
+9. Probar:
+   http://localhost:3001/api/meta/transactions/28027210243635773-27957771887246270/payment-debug
+
+RESULTADO ESPERADO PARA EL CASO DE STAKE PERU
+payment_method: null
+last4: null
+payment_method_source: UNAVAILABLE
+payment_method_verified: false
+
+Nota: La evidencia visual del administrador de Meta muestra que esa transaccion fue pagada con ****3107, pero el endpoint /activities utilizado por la integracion no esta entregando ese dato en extra_data. Hasta contar con una fuente API verificable, el sistema no debe inventar 9082 como tarjeta transaccional.

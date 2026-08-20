@@ -1,0 +1,15 @@
+ADPG-74 - V9.2 - Proyección de tasa efectiva USD/COP
+
+1. Detener npm run dev (Ctrl+C). Docker/PostgreSQL pueden seguir arriba.
+2. Reemplazar los archivos del parche respetando las carpetas.
+3. NO reemplazar .env.
+4. Opcional: agregar al .env:
+   USD_COP_EFFECTIVE_SPREAD_PERCENT=0.48
+   USD_COP_EFFECTIVE_SPREAD_MIN_PERCENT=0.44
+   USD_COP_EFFECTIVE_SPREAD_MAX_PERCENT=0.52
+5. No requiere npm install, Prisma generate ni migraciones.
+6. Ejecutar npm run dev.
+7. Consultar Agosto 2026. El backend recalcula al leer PostgreSQL; no es necesario resincronizar Meta ni TRM.
+8. Descargar XLSX: ahora incluye TRM oficial, COP referencia, spread estimado, tasa proyectada, COP proyectado y rango esperado.
+
+IMPORTANTE: el spread es una aproximación inicial. La tasa exacta se podrá calcular cuando importemos el extracto bancario: tasa_efectiva = monto_banco_COP / monto_meta_USD.

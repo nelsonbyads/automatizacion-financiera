@@ -60,6 +60,15 @@ export const config = {
   metaGraphVersion: (process.env.META_GRAPH_VERSION || process.env.GRAPH_VERSION || 'v25.0').trim(),
   cacheTtlSeconds: Math.max(0, Number(process.env.META_CACHE_TTL_SECONDS || 300)),
   databaseUrl: (process.env.DATABASE_URL || '').trim(),
+  trmHistoricalUrl: (
+    process.env.TRM_HISTORICAL_URL ||
+    'https://www.datos.gov.co/resource/32sa-8pi3.json'
+  ).trim(),
+  trmCurrentUrl: (process.env.TRM_CURRENT_URL || 'https://co.dolarapi.com/v1/trm').trim(),
+  socrataAppToken: (process.env.SOCRATA_APP_TOKEN || '').trim(),
+  usdCopEffectiveSpreadPercent: Number(process.env.USD_COP_EFFECTIVE_SPREAD_PERCENT || 0.48),
+  usdCopEffectiveSpreadMinPercent: Number(process.env.USD_COP_EFFECTIVE_SPREAD_MIN_PERCENT || 0.44),
+  usdCopEffectiveSpreadMaxPercent: Number(process.env.USD_COP_EFFECTIVE_SPREAD_MAX_PERCENT || 0.52),
 };
 
 export function getSafeMetaConfigStatus() {
@@ -77,6 +86,17 @@ export function getSafeMetaConfigStatus() {
 export function getSafeDatabaseConfigStatus() {
   return {
     databaseConfigured: Boolean(config.databaseUrl),
+  };
+}
+
+export function getSafeTrmConfigStatus() {
+  return {
+    historicalSourceConfigured: Boolean(config.trmHistoricalUrl),
+    currentFallbackConfigured: Boolean(config.trmCurrentUrl),
+    socrataAppTokenConfigured: Boolean(config.socrataAppToken),
+    effectiveSpreadPercent: config.usdCopEffectiveSpreadPercent,
+    effectiveSpreadMinPercent: config.usdCopEffectiveSpreadMinPercent,
+    effectiveSpreadMaxPercent: config.usdCopEffectiveSpreadMaxPercent,
   };
 }
 

@@ -22,22 +22,62 @@ enum SyncStatus {
   FAILED
 }
 
+enum MetaAccountRelationship {
+  OWNED
+  CLIENT
+}
+
+model MetaBusiness {
+  id             String                @id @default(uuid()) @db.Uuid
+  metaBusinessId String                @unique @map("meta_business_id")
+  name           String?
+  active         Boolean               @default(true)
+  accessible     Boolean               @default(true)
+  lastError      String?               @map("last_error") @db.Text
+  lastSyncedAt   DateTime?             @map("last_synced_at") @db.Timestamptz(3)
+  createdAt      DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
+  accounts       MetaBusinessAccount[]
+
+  @@index([active], map: "meta_businesses_active_idx")
+  @@index([accessible], map: "meta_businesses_accessible_idx")
+  @@map("meta_businesses")
+}
+
 model MetaAdAccount {
-  id              String            @id @default(uuid()) @db.Uuid
-  metaAccountId   String            @unique @map("meta_account_id")
-  metaObjectId    String?           @map("meta_object_id")
-  metaBusinessId  String?           @map("meta_business_id")
+  id              String                @id @default(uuid()) @db.Uuid
+  metaAccountId   String                @unique @map("meta_account_id")
+  metaObjectId    String?               @map("meta_object_id")
+  metaBusinessId  String?               @map("meta_business_id")
   name            String
   currency        String
-  timezoneName    String?           @map("timezone_name")
-  active          Boolean           @default(true)
-  lastSyncedAt    DateTime?         @map("last_synced_at") @db.Timestamptz(3)
-  createdAt       DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt       DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  timezoneName    String?               @map("timezone_name")
+  active          Boolean               @default(true)
+  lastSyncedAt    DateTime?             @map("last_synced_at") @db.Timestamptz(3)
+  createdAt       DateTime              @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime              @updatedAt @map("updated_at") @db.Timestamptz(3)
   transactions    MetaTransaction[]
+  businesses      MetaBusinessAccount[]
 
   @@index([metaBusinessId], map: "meta_ad_accounts_business_idx")
   @@map("meta_ad_accounts")
+}
+
+model MetaBusinessAccount {
+  id             String                  @id @default(uuid()) @db.Uuid
+  metaBusinessId String                  @map("meta_business_id")
+  metaAccountId  String                  @map("meta_account_id")
+  relationship   MetaAccountRelationship
+  lastSyncedAt   DateTime?               @map("last_synced_at") @db.Timestamptz(3)
+  createdAt      DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+  business       MetaBusiness            @relation(fields: [metaBusinessId], references: [metaBusinessId], onUpdate: Cascade, onDelete: Cascade)
+  account        MetaAdAccount           @relation(fields: [metaAccountId], references: [metaAccountId], onUpdate: Cascade, onDelete: Cascade)
+
+  @@unique([metaBusinessId, metaAccountId], map: "meta_business_accounts_business_account_key")
+  @@index([metaAccountId], map: "meta_business_accounts_account_idx")
+  @@index([relationship], map: "meta_business_accounts_relationship_idx")
+  @@map("meta_business_accounts")
 }
 
 model MetaTransaction {
@@ -52,6 +92,11 @@ model MetaTransaction {
   amount                     Decimal              @db.Decimal(20, 2)
   paymentMethod              String?              @map("payment_method")
   lastFour                   String?              @map("last_four")
+  paymentMethodSource        String?              @map("payment_method_source")
+  paymentStatus              String?              @map("payment_status")
+  invoiceId                  String?              @map("invoice_id")
+  accountDefaultPaymentMethod String?             @map("account_default_payment_method")
+  accountDefaultLastFour     String?              @map("account_default_last_four")
   paymentMethodChanged       Boolean              @default(false) @map("payment_method_changed")
   reconciliationStatus       ReconciliationStatus @default(PENDING) @map("reconciliation_status")
   reconciliationObservation String?              @map("reconciliation_observation") @db.Text
@@ -88,4 +133,22 @@ model SyncRun {
   @@index([source, year, month], map: "sync_runs_source_period_idx")
   @@index([status], map: "sync_runs_status_idx")
   @@map("sync_runs")
+}
+
+model ExchangeRate {
+  id            String   @id @default(uuid()) @db.Uuid
+  rateDate      DateTime @map("rate_date") @db.Date
+  baseCurrency  String   @map("base_currency")
+  quoteCurrency String   @map("quote_currency")
+  rate          Decimal  @db.Decimal(20, 6)
+  source        String
+  sourceUrl     String?  @map("source_url") @db.Text
+  retrievedAt   DateTime @default(now()) @map("retrieved_at") @db.Timestamptz(3)
+  rawData       Json?    @map("raw_data")
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([rateDate, baseCurrency, quoteCurrency], map: "exchange_rates_date_pair_key")
+  @@index([baseCurrency, quoteCurrency, rateDate], map: "exchange_rates_pair_date_idx")
+  @@map("exchange_rates")
 }

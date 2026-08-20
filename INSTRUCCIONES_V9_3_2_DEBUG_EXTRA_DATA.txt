@@ -1,0 +1,25 @@
+V9.3.2 - Diagnostico seguro de extra_data de Meta
+
+1. Deja Docker/PostgreSQL ejecutandose.
+2. Deten npm run dev con Ctrl + C.
+3. Reemplaza solamente:
+   server/database/meta-sync.service.js
+4. No reemplaces .env.
+5. No necesitas npm install, prisma:generate ni migraciones.
+6. Ejecuta:
+   npm run dev
+7. Abre:
+   http://localhost:3001/api/meta/transactions/28027210243635773-27957771887246270/payment-debug
+
+El endpoint ahora incluye activity_extra_data con solo estos campos si existen:
+- type
+- action
+- currency
+- new_value
+- transaction_id
+
+El diagnostico aplica redaccion automatica a claves sensibles como token, password,
+secret, authorization, api_key y client_secret. No muestra META_ACCESS_TOKEN.
+
+No necesitas volver a sincronizar Meta para esta prueba porque extra_data ya esta
+almacenado dentro del raw_data de la transaccion actual.
